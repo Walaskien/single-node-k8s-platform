@@ -1,0 +1,171 @@
+# PostgreSQL with scheduled logical backups to object storage.
+#
+# On a single-node cluster the database is the only component whose loss is
+# unrecoverable, so it gets the attention: persistent storage, a backup on a
+# schedule, and a restore procedure that is written down and tested
+# (docs/runbook.md).
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+
+---
+# Demo credentials, generated at deploy time in a real setup. Committing a
+# password is acceptable here only because this cluster is disposable and
+# reachable from nowhere; see docs/architecture.md on what changes for real use.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: apps
+type: Opaque
+stringData:
+  POSTGRES_DB: demo
+  POSTGRES_USER: demo
+  POSTGRES_PASSWORD: demo-local-only
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: apps
+spec:
+  clusterIP: None # headless: stable DNS per pod, which a StatefulSet needs
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: apps
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            # Without this, the data directory is the volume mount point itself,
+            # and initdb refuses to run because lost+found is already there.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "demo", "-d", "demo"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+
+---
+# Nightly logical backup pushed to MinIO. Retention is handled by keeping the
+# last N objects; anything older is pruned in the same job so a forgotten
+# bucket cannot fill the disk.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: apps
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:17-alpine
+              envFrom:
+                - secretRef:
+                    name: postgres-credentials
+                - secretRef:
+                    name: minio-credentials
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  apk add --no-cache aws-cli >/dev/null
+
+                  stamp=$(date +%Y%m%d-%H%M%S)
+                  file="/tmp/demo-${stamp}.sql.gz"
+
+                  echo "dumping database..."
+                  PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
+                    -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+                    | gzip > "$file"
+
+                  # A dump that cannot be read back is not a backup. Verifying
+                  # the gzip stream catches truncation, which is the common
+                  # silent failure when a pod is evicted mid-dump.
+                  echo "verifying archive..."
+                  gzip -t "$file"
+                  size=$(stat -c %s "$file")
+                  [ "$size" -gt 1000 ] || { echo "dump suspiciously small: ${size}B"; exit 1; }
+
+                  echo "uploading (${size} bytes)..."
+                  aws --endpoint-url "http://minio:9000" \
+                    s3 cp "$file" "s3://backups/postgres/"
+
+                  echo "pruning all but the 14 most recent..."
+                  aws --endpoint-url "http://minio:9000" \
+                    s3 ls s3://backups/postgres/ \
+                    | sort -r | tail -n +15 | awk '{print $4}' \
+                    | while read -r old; do
+                        [ -n "$old" ] && aws --endpoint-url "http://minio:9000" \
+                          s3 rm "s3://backups/postgres/$old"
+                      done
+
+                  echo "backup complete: demo-${stamp}.sql.gz"
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: MINIO_ROOT_USER
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: MINIO_ROOT_PASSWORD

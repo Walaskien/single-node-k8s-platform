@@ -1,0 +1,48 @@
+# Internal PKI: a self-signed root, and a ClusterIssuer that signs leaf
+# certificates from it. Applications reference the ClusterIssuer and never
+# deal with keys themselves.
+
+---
+# Bootstrap issuer. Its only job is to sign the root CA below — a root has to
+# be signed by something, and for a private PKI that something is itself.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-bootstrap
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+
+---
+# The root CA. Long-lived on purpose: clients install it once, and every leaf
+# rotates underneath it without anyone touching a client again. The 398-day
+# browser limit applies to server certificates, not to CAs.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: Example Internal Root CA
+  secretName: internal-root-ca-tls
+  duration: 87600h # 10 years
+  renewBefore: 8760h # 1 year
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: Issuer
+    group: cert-manager.io
+
+---
+# Cluster-wide issuer backed by the root above. Certificates in any namespace
+# can reference it, which is what makes per-application TLS a three-line change.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-ca
+spec:
+  ca:
+    secretName: internal-root-ca-tls

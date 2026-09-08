@@ -1,0 +1,121 @@
+# S3-compatible object storage. Backups land here; applications can use it for
+# uploads. Keeping an S3 API in the lab means application code is written the
+# same way it would be against a cloud bucket.
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: apps
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: minio
+  MINIO_ROOT_PASSWORD: minio-local-only
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: apps
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: apps
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: apps
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # a single RWO volume cannot be held by two pods at once
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+
+---
+# Creates the backups bucket once MinIO is reachable. A Job rather than an
+# init container: bucket creation belongs to the platform's lifecycle, not to
+# the storage pod's, and it must not re-run on every restart.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bootstrap
+  namespace: apps
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              until mc alias set local http://minio:9000 \
+                    "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" 2>/dev/null; do
+                echo "waiting for minio..."; sleep 3
+              done
+              mc mb --ignore-existing local/backups
+              mc version enable local/backups
+              echo "bucket ready"

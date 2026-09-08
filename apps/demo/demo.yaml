@@ -1,0 +1,194 @@
+# A two-hostname demo workload: a static frontend and an API on separate
+# ingress hosts. Two hostnames rather than one on purpose — it reproduces the
+# cross-origin and per-host TLS behaviour that real deployments hit, where a
+# certificate accepted for the UI says nothing about the API's certificate.
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: app-tls
+  namespace: apps
+spec:
+  secretName: app-tls
+  dnsNames: [app.example.internal]
+  duration: 8760h # 365 days — under Apple's 398-day ceiling
+  renewBefore: 1440h
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-tls
+  namespace: apps
+spec:
+  secretName: api-tls
+  dnsNames: [api.example.internal]
+  duration: 8760h
+  renewBefore: 1440h
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-frontend
+  namespace: apps
+data:
+  index.html: |
+    <!doctype html>
+    <meta charset="utf-8">
+    <title>Platform demo</title>
+    <style>
+      body { font: 16px system-ui; max-width: 40rem; margin: 4rem auto; padding: 0 1rem }
+      pre  { background: #f4f4f5; padding: .75rem; border-radius: .375rem; overflow-x: auto }
+    </style>
+    <h1>Platform demo</h1>
+    <p>The page below is served from <code>app.example.internal</code> and calls
+       <code>api.example.internal</code> — a separate host with its own certificate.</p>
+    <pre id="out">calling API…</pre>
+    <script>
+      fetch("https://api.example.internal:8443/", { mode: "cors" })
+        .then(r => r.text())
+        .then(t => out.textContent = "API replied:\n\n" + t)
+        .catch(e => out.textContent =
+          "API call failed: " + e +
+          "\n\nIf this fails while the page itself loaded, the API certificate " +
+          "is not trusted. Browsers do not prompt for fetch() — they fail silently.");
+    </script>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-frontend
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: demo-frontend }
+  template:
+    metadata:
+      labels: { app: demo-frontend }
+    spec:
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+      volumes:
+        - name: content
+          configMap: { name: demo-frontend }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-frontend
+  namespace: apps
+spec:
+  selector: { app: demo-frontend }
+  ports: [{ port: 80, targetPort: 8080 }]
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: demo-api }
+  template:
+    metadata:
+      labels: { app: demo-api }
+    spec:
+      containers:
+        - name: api
+          image: hashicorp/http-echo:1.0.0
+          args:
+            - -listen=:8080
+            - -text=hello from the API behind an internal certificate
+          ports: [{ containerPort: 8080 }]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api
+  namespace: apps
+spec:
+  selector: { app: demo-api }
+  ports: [{ port: 80, targetPort: 8080 }]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-frontend
+  namespace: apps
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [app.example.internal]
+      secretName: app-tls
+  rules:
+    - host: app.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-frontend
+                port: { number: 80 }
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-api
+  namespace: apps
+  annotations:
+    # Without these the browser blocks the cross-host call from the frontend.
+    traefik.ingress.kubernetes.io/router.middlewares: apps-cors@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [api.example.internal]
+      secretName: api-tls
+  rules:
+    - host: api.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-api
+                port: { number: 80 }
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: cors
+  namespace: apps
+spec:
+  headers:
+    accessControlAllowOriginList: ["https://app.example.internal:8443"]
+    accessControlAllowMethods: ["GET", "POST", "OPTIONS"]
+    accessControlAllowHeaders: ["content-type", "authorization"]
+    accessControlMaxAge: 3600

@@ -1,0 +1,34 @@
+# Single-node cluster. One server, no agents — the same shape as a bare-metal
+# k3s or kubeadm node, so manifests here transfer without changes.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: platform
+
+servers: 1
+agents: 0
+
+# Host ports are deliberately non-privileged so the lab needs no sudo.
+# Internal hostnames resolve to 127.0.0.1 via /etc/hosts (see `make hosts`).
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+  - port: 8443:443
+    nodeFilters:
+      - loadbalancer
+
+options:
+  k3d:
+    wait: true
+    timeout: 300s
+  k3s:
+    extraArgs:
+      # k3s ships its own metrics-server; the platform installs a pinned one
+      # instead so the version is explicit rather than whatever k3s bundles.
+      - arg: --disable=metrics-server
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

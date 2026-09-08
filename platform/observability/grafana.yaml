@@ -1,0 +1,96 @@
+# Minimal observability: Grafana behind the internal certificate, plus
+# metrics-server (installed via Helm in the Makefile, so its version is pinned
+# rather than whatever the distribution bundles).
+#
+# Deliberately small. On a single node the useful questions are "is it running"
+# and "what changed" — a full Prometheus stack costs more memory than the
+# workloads it watches.
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+  namespace: apps
+spec:
+  secretName: grafana-tls
+  dnsNames: [grafana.example.internal]
+  duration: 8760h
+  renewBefore: 1440h
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-credentials
+  namespace: apps
+type: Opaque
+stringData:
+  GF_SECURITY_ADMIN_USER: admin
+  GF_SECURITY_ADMIN_PASSWORD: admin-local-only
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grafana }
+  template:
+    metadata:
+      labels: { app: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.6.0
+          envFrom:
+            - secretRef:
+                name: grafana-credentials
+          env:
+            - name: GF_SERVER_ROOT_URL
+              value: https://grafana.example.internal:8443
+          ports: [{ containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: apps
+spec:
+  selector: { app: grafana }
+  ports: [{ port: 80, targetPort: 3000 }]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: apps
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [grafana.example.internal]
+      secretName: grafana-tls
+  rules:
+    - host: grafana.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port: { number: 80 }
