@@ -1,0 +1,7 @@
+# Applied before everything else. Kept in its own file rather than inside one
+# component's manifest: whichever component owned it would silently become a
+# prerequisite of all the others, and reordering the apply would break them.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps

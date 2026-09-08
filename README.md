@@ -13,6 +13,19 @@ make status  # what is running, what URLs exist, when certificates expire
 make down    # destroy everything
 ```
 
+## k3d here, kubeadm in production
+
+The cluster this models is a full upstream Kubernetes node installed with `kubeadm` —
+flannel for networking, HAProxy for ingress, local storage. This repository provisions
+**k3d** instead, for one reason: a reviewer should be able to run it on a laptop in a few
+minutes without a spare machine.
+
+Everything above the cluster layer is identical. The manifests in `platform/` and `apps/`
+are plain Kubernetes objects and apply unchanged to either. What differs is confined to the
+cluster itself — ingress controller, CNI, storage class — and is listed in
+[`docs/production-node.md`](docs/production-node.md), together with the kubeadm procedure
+this lab stands in for.
+
 ## Why single-node
 
 Small internal deployments — a document system, an ERP, an intranet — often serve tens of
@@ -67,9 +80,13 @@ Mixing them into application manifests is what makes clusters impossible to rebu
 - `make`
 
 ```console
-brew install k3d kubectl helm colima
-colima start --cpu 4 --memory 8
+brew install k3d kubectl helm colima docker
+colima start --cpu 4 --memory 4 --disk 20
 ```
+
+Four gigabytes is enough for the whole stack — it was developed and tested on an 8 GB
+MacBook Air, with the VM given half of that. `make up` takes about five minutes on a cold
+cache, most of it pulling images.
 
 ## Certificates and trust
 

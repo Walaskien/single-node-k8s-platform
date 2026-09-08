@@ -6,12 +6,6 @@
 # (docs/runbook.md).
 
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: apps
-
----
 # Demo credentials, generated at deploy time in a real setup. Committing a
 # password is acceptable here only because this cluster is disposable and
 # reachable from nowhere; see docs/architecture.md on what changes for real use.
@@ -136,13 +130,17 @@ spec:
                     -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
                     | gzip > "$file"
 
-                  # A dump that cannot be read back is not a backup. Verifying
-                  # the gzip stream catches truncation, which is the common
-                  # silent failure when a pod is evicted mid-dump.
+                  # A dump that cannot be read back is not a backup. Two checks:
+                  # the gzip stream must be intact, and pg_dump must have
+                  # reached its own end marker — it writes that trailer only
+                  # after a complete dump, so its presence proves the file is
+                  # whole. A size threshold would only approximate this, and
+                  # picks a fight with legitimately small databases.
                   echo "verifying archive..."
                   gzip -t "$file"
+                  gunzip -c "$file" | tail -5 | grep -q "PostgreSQL database dump complete" || {
+                      echo "dump is incomplete — end marker missing"; exit 1; }
                   size=$(stat -c %s "$file")
-                  [ "$size" -gt 1000 ] || { echo "dump suspiciously small: ${size}B"; exit 1; }
 
                   echo "uploading (${size} bytes)..."
                   aws --endpoint-url "http://minio:9000" \

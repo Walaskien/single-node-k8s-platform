@@ -21,6 +21,7 @@ cluster: ## Create the k3d cluster
 		|| k3d cluster create --config cluster/k3d.yaml
 
 platform: ## Install cert-manager, PKI, storage, database and observability
+	kubectl apply -f platform/namespace.yaml
 	helm repo add jetstack https://charts.jetstack.io --force-update
 	helm upgrade --install cert-manager jetstack/cert-manager \
 		--namespace cert-manager --create-namespace \
@@ -36,7 +37,19 @@ platform: ## Install cert-manager, PKI, storage, database and observability
 		--set args="{--kubelet-insecure-tls}" --wait
 	kubectl apply -f platform/observability/
 
-apps: ## Deploy the demo application
+wait-traefik: ## Block until k3s has finished installing Traefik
+	@echo "waiting for Traefik — k3s installs it asynchronously after the API is up,"
+	@echo "so applying an Ingress or Middleware too early fails on a missing CRD"
+	@for i in $$(seq 1 90); do \
+		if kubectl get crd middlewares.traefik.io >/dev/null 2>&1 \
+		&& kubectl get ingressclass traefik >/dev/null 2>&1; then \
+			echo "Traefik ready"; exit 0; \
+		fi; \
+		sleep 5; \
+	done; \
+	echo "Traefik did not become ready in time"; exit 1
+
+apps: wait-traefik ## Deploy the demo application
 	kubectl apply -f apps/demo/
 
 wait-certs: ## Block until every certificate has been issued
@@ -47,7 +60,7 @@ status: ## Show workloads, ingress hostnames and certificate expiry
 	@kubectl get pods -A --no-headers | awk '{printf "  %-16s %-46s %s\n", $$1, $$2, $$4}'
 	@echo
 	@echo "── ingress ───────────────────────────────────────────"
-	@kubectl get ingress -A --no-headers 2>/dev/null | awk '{printf "  %-40s -> %s\n", $$3, $$1"/"$$2}' || echo "  none"
+	@kubectl get ingress -A --no-headers 2>/dev/null | awk '{printf "  %-40s -> %s\n", $$4, $$1"/"$$2}' || echo "  none"
 	@echo
 	@echo "── certificates ──────────────────────────────────────"
 	@for ns in cert-manager $(NAMESPACE); do \
