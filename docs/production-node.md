@@ -10,13 +10,33 @@ node looks like, and exactly where the two differ.
 |---|---|---|
 | Cluster | k3s in Docker | Upstream Kubernetes, `kubeadm init` |
 | Host OS | container | Rocky Linux / RHEL family |
+| Container runtime | containerd | containerd |
 | CNI | flannel (bundled with k3s) | flannel, applied after `kubeadm init` |
 | Ingress | Traefik (bundled) | HAProxy Ingress, installed via Helm |
 | Storage | k3d local-path | local-path provisioner, installed separately |
 | Ports | 8080/8443 on the host | 80/443 directly on the node |
 
-Everything in `platform/` and `apps/` is portable between the two, with two exceptions
-worth knowing about:
+### Docker in the lab is not the pod runtime
+
+Worth stating plainly, because the requirement to install Docker suggests otherwise: k3d
+means "k3s in Docker", and Docker's job there is to impersonate a *machine*. It runs one
+container that stands in for the node. Inside that container, k3s starts **containerd**, and
+pods run on containerd — the same runtime as production.
+
+```
+lab          Colima → Docker → node container → k3s → containerd → pods
+production                      Rocky Linux    → kubeadm → containerd → pods
+```
+
+So Docker exists only at the outermost layer, only on a laptop, and nothing in the cluster
+talks to it. `kubectl get nodes -o wide` reports `containerd://…` under CONTAINER-RUNTIME in
+both environments. Anything that depended on the Docker socket would work in the lab and
+break on the real node; nothing here does.
+
+### What is not portable
+
+Everything in `platform/` and `apps/` moves between the two, with two exceptions worth
+knowing about:
 
 - **`ingressClassName`** — `traefik` in the lab, `haproxy` on the node.
 - **Traefik `Middleware`** for CORS is Traefik-specific. On HAProxy the same thing is done

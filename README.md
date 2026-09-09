@@ -4,6 +4,11 @@ A reproducible single-node Kubernetes environment for internal line-of-business
 applications: private PKI, TLS ingress on internal hostnames, a stateful database with
 scheduled backups, S3-compatible object storage, and observability.
 
+The deployment it models is **upstream Kubernetes installed with `kubeadm`** on a single
+node — containerd, flannel, HAProxy ingress, local storage — not a lightweight
+distribution. One node is a capacity decision, not a simplification: it is a complete
+control plane, just not a redundant one.
+
 Everything comes up with one command and tears down with another. The point is that a
 reviewer can run it, not just read about it.
 
@@ -13,18 +18,22 @@ make status  # what is running, what URLs exist, when certificates expire
 make down    # destroy everything
 ```
 
-## k3d here, kubeadm in production
+## Why the lab runs k3d and the real thing runs kubeadm
 
-The cluster this models is a full upstream Kubernetes node installed with `kubeadm` —
-flannel for networking, HAProxy for ingress, local storage. This repository provisions
-**k3d** instead, for one reason: a reviewer should be able to run it on a laptop in a few
-minutes without a spare machine.
+The target is a `kubeadm` cluster on a single node: a full control plane — API server, etcd,
+scheduler, controller-manager — with the control-plane taint removed so workloads schedule
+on it. The procedure for building that node is in
+[`docs/production-node.md`](docs/production-node.md).
 
-Everything above the cluster layer is identical. The manifests in `platform/` and `apps/`
-are plain Kubernetes objects and apply unchanged to either. What differs is confined to the
-cluster itself — ingress controller, CNI, storage class — and is listed in
-[`docs/production-node.md`](docs/production-node.md), together with the kubeadm procedure
-this lab stands in for.
+This repository provisions **k3d** instead, for one reason: a reviewer should be able to run
+it on a laptop in a few minutes without dedicating a machine. `kubeadm` wants a whole host,
+swap disabled and kernel modules loaded; k3d wants a container.
+
+That choice changes nothing above the cluster layer. The manifests in `platform/` and
+`apps/` are plain Kubernetes objects and apply unchanged to either, and the pod runtime is
+containerd in both — Docker in the lab only hosts the container that stands in for the node.
+The differences are confined to the ingress controller, the CNI and the storage class, and
+are enumerated in `docs/production-node.md`.
 
 ## Why single-node
 
@@ -46,7 +55,8 @@ changes when you outgrow it.
 
 | Layer | Component | Why |
 |---|---|---|
-| Cluster | k3d (k3s in Docker) | Single-node cluster on a laptop, close enough to a bare-metal k3s/kubeadm node |
+| Cluster | `kubeadm` on a node; k3d in the lab | Full upstream control plane, single node; k3d only so this runs on a laptop |
+| Runtime | containerd | Same in both environments — nothing here uses the Docker socket |
 | Ingress | Traefik + TLS | One entry point, hostname-based routing |
 | PKI | cert-manager, self-signed root CA | Internal hostnames need certificates nobody can buy |
 | Database | PostgreSQL (StatefulSet) | Persistent state, the part worth protecting |
