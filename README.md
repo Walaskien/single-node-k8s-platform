@@ -119,6 +119,8 @@ diagnose it, is written up separately in
   decisions behind them, including what to change when this outgrows one node
 - [`docs/runbook.md`](docs/runbook.md) — backup and restore, certificate rotation,
   common failures and how they present
+- [`docs/dual-homed-node.md`](docs/dual-homed-node.md) — why a node with two interfaces
+  answers on the wrong one, and how to pin its addresses so a reboot stays boring
 
 ## License
 
