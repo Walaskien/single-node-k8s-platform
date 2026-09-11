@@ -1,7 +1,3 @@
-# A two-hostname demo workload: a static frontend and an API on separate
-# ingress hosts. Two hostnames rather than one on purpose — it reproduces the
-# cross-origin and per-host TLS behaviour that real deployments hit, where a
-# certificate accepted for the UI says nothing about the API's certificate.
 
 ---
 apiVersion: cert-manager.io/v1
