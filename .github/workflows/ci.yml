@@ -1,0 +1,76 @@
+name: ci
+
+# Two gates on every change:
+#   validate — lint YAML and check the manifests against the Kubernetes schemas.
+#              Fast, no cluster, catches typos and invalid objects before anything runs.
+#   e2e      — stand the whole platform up in a throwaway k3d cluster and prove the
+#              demo is actually served over TLS by the internal CA. This is the point
+#              of the repo: the stack is verified to run, not just to parse.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: yamllint
+        run: |
+          pip install --quiet yamllint==1.35.1
+          yamllint apps cluster platform .github
+
+      - name: kubeconform (validate manifests against Kubernetes schemas)
+        run: |
+          version=v0.6.7
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${version}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz kubeconform
+          # cluster/ holds a k3d config, not Kubernetes objects, so it is not checked here.
+          # -ignore-missing-schemas skips CRDs whose schema is not bundled (cert-manager,
+          # Traefik); core objects are still validated strictly.
+          ./kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.31.0 \
+            apps platform
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and helm
+        run: |
+          curl -sSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.7.4 bash
+          curl -sSL https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz | tar -xz
+          sudo mv linux-amd64/helm /usr/local/bin/helm
+          # kubectl ships on the runner image already.
+          k3d version && helm version && kubectl version --client
+
+      - name: Bring the platform up
+        run: make up
+
+      - name: Show what came up
+        if: always()
+        run: make status
+
+      - name: Smoke test the demo endpoints over the internal CA
+        run: make smoke
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A || true
+          kubectl -n apps describe certificate || true
+          kubectl -n cert-manager logs deploy/cert-manager --tail=100 || true
+
+      - name: Tear the cluster down
+        if: always()
+        run: make down
