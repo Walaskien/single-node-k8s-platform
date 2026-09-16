@@ -1,5 +1,7 @@
 # Single-node Kubernetes platform
 
+[![ci](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml)
+
 A reproducible single-node Kubernetes environment for internal line-of-business
 applications: private PKI, TLS ingress on internal hostnames, a stateful database with
 scheduled backups, S3-compatible object storage, and observability.
@@ -17,6 +19,20 @@ make up      # create the cluster and deploy the whole platform
 make status  # what is running, what URLs exist, when certificates expire
 make down    # destroy everything
 ```
+
+## Continuous integration
+
+Because the claim is that this runs, CI proves it on every push and pull request
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+- **validate** — `yamllint` on every manifest, then `kubeconform` checks each object
+  against the Kubernetes schemas. Core objects are validated strictly; CRDs whose schema
+  is not bundled (cert-manager, Traefik) are skipped rather than guessed at.
+- **e2e** — creates a throwaway k3d cluster, runs `make up`, and then `make smoke` curls
+  both demo hostnames over the internal CA. The job fails if a certificate never issues or
+  an endpoint does not serve — so a change that breaks the stack cannot go green.
+
+`make smoke` is the same check CI runs, so you can reproduce a green build locally.
 
 ## Why the lab runs k3d and the real thing runs kubeadm
 
