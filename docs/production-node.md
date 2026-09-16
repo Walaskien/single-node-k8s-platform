@@ -48,7 +48,8 @@ into a broken one when moved between clusters — which is the reason to write t
 ## Bringing up the node
 
 A condensed version of the procedure, for reference rather than for copy-paste — versions
-move and the upstream documentation is authoritative.
+move and the upstream documentation is authoritative. The same steps, automated and
+idempotent, live in [`ansible/`](../ansible/) — that is the version meant to be run.
 
 ```bash
 # Kubernetes needs swap off and bridged traffic visible to iptables

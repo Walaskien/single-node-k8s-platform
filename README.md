@@ -137,6 +137,10 @@ diagnose it, is written up separately in
   common failures and how they present
 - [`docs/dual-homed-node.md`](docs/dual-homed-node.md) — why a node with two interfaces
   answers on the wrong one, and how to pin its addresses so a reboot stays boring
+- [`docs/production-node.md`](docs/production-node.md) — how the real `kubeadm` node is
+  built and where it differs from the k3d lab
+- [`ansible/`](ansible/) — that build as an idempotent playbook: bare Rocky Linux 10 host
+  in, working single-node cluster out, in one command
 
 ## License
 
