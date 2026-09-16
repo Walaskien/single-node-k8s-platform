@@ -1,0 +1,25 @@
+---
+- name: Add the Kubernetes package repository
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: "Kubernetes {{ kubernetes_repo_minor }}"
+    baseurl: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_minor }}/rpm/"
+    gpgcheck: true
+    gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_minor }}/rpm/repodata/repomd.xml.key"
+    enabled: true
+    # stop a routine `dnf update` from moving the cluster out from under itself
+    exclude: kubelet kubeadm kubectl
+
+- name: Install kubelet, kubeadm and kubectl
+  ansible.builtin.dnf:
+    name:
+      - "kubelet-{{ kubernetes_version }}"
+      - "kubeadm-{{ kubernetes_version }}"
+      - "kubectl-{{ kubernetes_version }}"
+    state: present
+    disable_excludes: kubernetes
+
+- name: Enable kubelet so it starts with the node
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true

@@ -1,0 +1,41 @@
+---
+- name: Initialise the control plane
+  ansible.builtin.command:
+    cmd: >-
+      kubeadm init
+      --pod-network-cidr={{ pod_network_cidr }}
+      --service-cidr={{ service_cidr }}
+      --kubernetes-version={{ kubernetes_version }}
+    creates: /etc/kubernetes/admin.conf
+
+- name: Create the .kube directory for root
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: "0700"
+
+- name: Install the admin kubeconfig for root
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: true
+    mode: "0600"
+
+- name: Remove the control-plane taint so a single node can schedule workloads
+  ansible.builtin.command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: untaint
+  changed_when: "'untainted' in untaint.stdout"
+  failed_when:
+    - untaint.rc != 0
+    - "'not found' not in untaint.stderr"
+
+- name: Deploy the flannel CNI
+  ansible.builtin.command: >-
+    kubectl apply -f
+    https://github.com/flannel-io/flannel/releases/download/{{ flannel_version }}/kube-flannel.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: flannel_apply
+  changed_when: "'created' in flannel_apply.stdout or 'configured' in flannel_apply.stdout"

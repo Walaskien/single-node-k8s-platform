@@ -1,0 +1,24 @@
+---
+- name: Deploy the local-path storage provisioner
+  ansible.builtin.command: >-
+    kubectl apply -f
+    https://raw.githubusercontent.com/rancher/local-path-provisioner/{{ local_path_version }}/deploy/local-path-storage.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: local_path_apply
+  changed_when: "'created' in local_path_apply.stdout or 'configured' in local_path_apply.stdout"
+
+- name: Mark local-path as the default StorageClass
+  ansible.builtin.command: kubectl patch storageclass local-path -p {{ patch | to_json | quote }}
+  vars:
+    patch:
+      metadata:
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: sc_patch
+  # without a default StorageClass every PVC stays Pending on a fresh cluster
+  changed_when:
+    - "'patched' in sc_patch.stdout"
+    - "'no change' not in sc_patch.stdout"

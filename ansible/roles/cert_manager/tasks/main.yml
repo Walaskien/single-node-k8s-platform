@@ -1,0 +1,20 @@
+---
+- name: Add the jetstack helm repository
+  ansible.builtin.command: helm repo add jetstack https://charts.jetstack.io
+  register: jetstack_repo
+  changed_when: "'has been added' in jetstack_repo.stdout"
+  failed_when:
+    - jetstack_repo.rc != 0
+    - "'already exists' not in jetstack_repo.stderr"
+
+- name: Install cert-manager
+  ansible.builtin.command: >-
+    helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace cert-manager --create-namespace
+    --version {{ cert_manager_version }}
+    --set crds.enabled=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cert_manager_install
+  changed_when: "'STATUS: deployed' in cert_manager_install.stdout"
+  # the ClusterIssuer and Certificates themselves are applied from platform/cert-manager/

@@ -1,0 +1,15 @@
+---
+- name: Provision a single-node Kubernetes cluster (kubeadm on Rocky/RHEL)
+  hosts: k8s_node
+  become: true
+  gather_facts: true
+
+  roles:
+    - prereqs
+    - containerd
+    - kube_packages
+    - control_plane
+    - ingress
+    - storage
+    - role: cert_manager
+      when: install_cert_manager | bool
