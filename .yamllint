@@ -1,0 +1,20 @@
+# Relaxed to match the style already used in this repo: inline flow maps
+# (matchLabels: { app: x }), longer lines in manifests, and leading comments.
+extends: default
+
+rules:
+  line-length:
+    max: 200
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  indentation:
+    spaces: consistent
+    indent-sequences: consistent
+  truthy:
+    # allow GitHub Actions `on:` and Kubernetes `enabled: true` style keys
+    check-keys: false
