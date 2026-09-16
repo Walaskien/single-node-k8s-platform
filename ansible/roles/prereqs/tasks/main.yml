@@ -1,0 +1,74 @@
+---
+- name: Disable swap for the current boot
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  # kubelet refuses to start while swap is on
+
+- name: Comment swap entries in /etc/fstab so it stays off after reboot
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\n]+\s+swap\s+.*)$'
+    replace: '# \1'
+
+- name: Set SELinux to permissive
+  ansible.posix.selinux:
+    policy: targeted
+    state: permissive
+
+- name: Persist the kernel modules Kubernetes networking needs
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load the kernel modules now
+  ansible.builtin.command: "modprobe {{ item }}"
+  loop:
+    - overlay
+    - br_netfilter
+  changed_when: false
+
+- name: Apply the sysctl settings for bridged traffic and forwarding
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+    reload: true
+  loop:
+    - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+    - { name: net.ipv4.ip_forward, value: "1" }
+
+- name: Gather service facts (to see whether firewalld is running)
+  ansible.builtin.service_facts:
+
+- name: Open the ingress ports (single node needs only 80/443 reachable)
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - 80/tcp
+    - 443/tcp
+  when:
+    - manage_firewalld | bool
+    - "'firewalld.service' in ansible_facts.services"
+    - ansible_facts.services['firewalld.service'].state == 'running'
+
+- name: Open the API port (only when kubectl is used from off the node)
+  ansible.posix.firewalld:
+    port: 6443/tcp
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - manage_firewalld | bool
+    - open_api_port | bool
+    - "'firewalld.service' in ansible_facts.services"
+    - ansible_facts.services['firewalld.service'].state == 'running'

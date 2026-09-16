@@ -1,0 +1,42 @@
+---
+- name: Check whether helm is already installed
+  ansible.builtin.command: helm version
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Download and unpack helm
+  ansible.builtin.unarchive:
+    src: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/linux-amd64/helm
+  when: helm_check.rc != 0
+
+- name: Install the helm binary onto PATH
+  ansible.builtin.copy:
+    src: /tmp/linux-amd64/helm
+    dest: /usr/local/bin/helm
+    remote_src: true
+    mode: "0755"
+  when: helm_check.rc != 0
+
+- name: Add the HAProxy Ingress helm repository
+  ansible.builtin.command: helm repo add haproxy-ingress https://haproxy-ingress.github.io/charts
+  register: haproxy_repo
+  changed_when: "'has been added' in haproxy_repo.stdout"
+  failed_when:
+    - haproxy_repo.rc != 0
+    - "'already exists' not in haproxy_repo.stderr"
+
+- name: Install HAProxy Ingress with hostNetwork so the node's IP is the entrypoint
+  ansible.builtin.command: >-
+    helm upgrade --install haproxy-ingress haproxy-ingress/haproxy-ingress
+    --namespace haproxy-ingress --create-namespace
+    --version {{ haproxy_ingress_chart_version }}
+    --set controller.hostNetwork=true
+    --set controller.service.type=ClusterIP
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: haproxy_install
+  changed_when: "'STATUS: deployed' in haproxy_install.stdout"

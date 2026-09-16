@@ -1,0 +1,22 @@
+---
+# Versions are pinned to the reference production node (Rocky Linux 10 / kubeadm)
+# so a fresh host comes up identical to it. Bump deliberately, not by drift.
+
+kubernetes_version: "1.36.3"        # kubelet / kubeadm / kubectl
+kubernetes_repo_minor: "v1.36"      # pkgs.k8s.io stable stream
+pod_network_cidr: "10.244.0.0/16"   # flannel's expected range — must match
+service_cidr: "10.96.0.0/12"
+
+flannel_version: "v0.28.9"
+local_path_version: "v0.0.37"
+haproxy_ingress_chart_version: "0.16.1"
+helm_version: "v3.16.4"
+
+# Optional PKI layer. The issuers/certificates themselves live in platform/.
+install_cert_manager: false
+cert_manager_version: "v1.21.1"
+
+# firewalld: a single node only needs the ingress ports reachable from clients.
+# kubelet/flannel/etcd traffic never leaves the host, so those ports stay closed.
+manage_firewalld: true
+open_api_port: false                # set true only if you run kubectl remotely (6443)

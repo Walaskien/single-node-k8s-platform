@@ -1,0 +1,30 @@
+---
+- name: Install containerd
+  ansible.builtin.dnf:
+    name: containerd
+    state: present
+
+- name: Ensure the containerd config directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: Render the default containerd configuration
+  ansible.builtin.command: containerd config default
+  register: containerd_default
+  changed_when: false
+
+- name: Write the config with the systemd cgroup driver enabled
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_default.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
+    mode: "0644"
+  notify: Restart containerd
+  # kubelet and containerd must agree on the cgroup driver, or pods never start
+
+- name: Enable and start containerd
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: started
