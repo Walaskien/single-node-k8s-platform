@@ -41,7 +41,9 @@ jobs:
 
       - name: ansible-lint (provisioning playbook)
         run: |
-          pip install --quiet "ansible-lint==6.22.2"
+          # pin ansible-core too: ansible-lint 6.22.2 imports internals that a newer
+          # core has moved, so an unpinned install crashes on import
+          pip install --quiet "ansible-core==2.15.13" "ansible-lint==6.22.2"
           ansible-galaxy collection install -r ansible/requirements.yml
           cd ansible && ansible-lint
 
