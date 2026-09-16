@@ -25,7 +25,7 @@ jobs:
       - name: yamllint
         run: |
           pip install --quiet yamllint==1.35.1
-          yamllint apps cluster platform .github
+          yamllint apps cluster platform ansible .github
 
       - name: kubeconform (validate manifests against Kubernetes schemas)
         run: |
@@ -38,6 +38,12 @@ jobs:
           ./kubeconform -strict -summary -ignore-missing-schemas \
             -kubernetes-version 1.31.0 \
             apps platform
+
+      - name: ansible-lint (provisioning playbook)
+        run: |
+          pip install --quiet "ansible-lint==6.22.2"
+          ansible-galaxy collection install -r ansible/requirements.yml
+          cd ansible && ansible-lint
 
   e2e:
     runs-on: ubuntu-latest
