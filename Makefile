@@ -5,7 +5,7 @@ DOMAIN       := example.internal
 HOSTS        := app.$(DOMAIN) api.$(DOMAIN) s3.$(DOMAIN) grafana.$(DOMAIN)
 
 .DEFAULT_GOAL := help
-.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs logs
+.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs logs smoke
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -89,6 +89,19 @@ trust-ca: ## Export the root CA and show how to trust it
 
 logs: ## Tail logs from the demo API
 	kubectl -n $(NAMESPACE) logs -l app=demo-api -f --tail=50
+
+smoke: ## Verify the demo endpoints answer over the internal CA (used by CI and locally)
+	@kubectl -n cert-manager get secret internal-root-ca-tls \
+		-o jsonpath='{.data.tls\.crt}' | base64 -d > internal-root-ca.pem
+	@echo "→ frontend  https://app.$(DOMAIN):8443/"
+	@curl -fsS --resolve app.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
+		https://app.$(DOMAIN):8443/ | grep -q "Platform demo" \
+		&& echo "  OK — frontend served, certificate trusted"
+	@echo "→ api       https://api.$(DOMAIN):8443/"
+	@curl -fsS --resolve api.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
+		https://api.$(DOMAIN):8443/ | grep -q "internal certificate" \
+		&& echo "  OK — api served, certificate trusted"
+	@rm -f internal-root-ca.pem
 
 down: ## Destroy the cluster
 	k3d cluster delete $(CLUSTER)
