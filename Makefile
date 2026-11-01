@@ -5,10 +5,13 @@ DOMAIN       := example.internal
 HOSTS        := app.$(DOMAIN) api.$(DOMAIN) s3.$(DOMAIN) grafana.$(DOMAIN)
 
 .DEFAULT_GOAL := help
-.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs wait-apps logs smoke
+.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs wait-apps logs smoke lint
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+
+lint: ## Run the same linters as CI (via pre-commit)
+	pre-commit run --all-files
 
 up: cluster platform apps wait-certs wait-apps ## Create the cluster and deploy everything
 	@echo
