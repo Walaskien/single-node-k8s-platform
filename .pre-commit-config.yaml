@@ -1,7 +1,4 @@
-# Local mirror of the CI `validate` job: run the same linters before pushing,
-# so lint failures surface on your machine instead of in Actions.
-#   pre-commit install        # wire the hooks into git commit, or
-#   make lint                 # run them all on demand
+# Local mirror of the CI `validate` job. Run it with `make lint`.
 repos:
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.35.1

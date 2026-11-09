@@ -1,11 +1,7 @@
 name: ci
 
-# Two gates on every change:
-#   validate — lint YAML and check the manifests against the Kubernetes schemas.
-#              Fast, no cluster, catches typos and invalid objects before anything runs.
-#   e2e      — stand the whole platform up in a throwaway k3d cluster and prove the
-#              demo is actually served over TLS by the internal CA. This is the point
-#              of the repo: the stack is verified to run, not just to parse.
+# validate: lint and schema-check the manifests, no cluster needed.
+# e2e: bring the whole platform up in k3d and check the demo is served over TLS by the internal CA.
 
 on:
   push:
