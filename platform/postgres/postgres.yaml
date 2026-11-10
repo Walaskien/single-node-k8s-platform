@@ -132,14 +132,14 @@ spec:
 
                   # A dump that cannot be read back is not a backup. Two checks:
                   # the gzip stream must be intact, and pg_dump must have
-                  # reached its own end marker — it writes that trailer only
+                  # reached its own end marker, it writes that trailer only
                   # after a complete dump, so its presence proves the file is
                   # whole. A size threshold would only approximate this, and
                   # picks a fight with legitimately small databases.
                   echo "verifying archive..."
                   gzip -t "$file"
                   gunzip -c "$file" | tail -5 | grep -q "PostgreSQL database dump complete" || {
-                      echo "dump is incomplete — end marker missing"; exit 1; }
+                      echo "dump is incomplete, end marker missing"; exit 1; }
                   size=$(stat -c %s "$file")
 
                   echo "uploading (${size} bytes)..."

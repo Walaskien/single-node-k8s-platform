@@ -24,7 +24,7 @@ ens36   192.168.1.224/24    management network, gateway 192.168.1.1
 
 A router forwards `203.0.113.10:47852` to `192.168.1.224:22`. From a workstation on
 `192.168.1.0/24` the node answers instantly. Through the forward the TCP connection never
-completes — not refused, not reset, just silence until the client gives up.
+completes, not refused, not reset, just silence until the client gives up.
 
 The instinct is to look at `sshd`, then at the firewall, then to blame the router. All three
 were fine: `sshd` was bound to `0.0.0.0:22` with no `ListenAddress`, the firewall was
@@ -48,7 +48,7 @@ the client or is dropped as martian on the way. From inside `192.168.1.0/24` the
 link-local delivery that never consults the default route at all, which is exactly why local
 access keeps working and hides the problem.
 
-The routing table said the same thing less legibly — three default routes, of which only the
+The routing table said the same thing less legibly, three default routes, of which only the
 lowest metric ever matters:
 
 ```
@@ -95,7 +95,7 @@ network:
 Each interface declares its default route twice on purpose: once in the main table with a
 metric, which decides where *outbound* traffic initiated by the node goes, and once in a
 private table, which decides how *replies* from that address get out. The `scope: link`
-entry is needed because a private table starts empty — without it the table can route to the
+entry is needed because a private table starts empty, without it the table can route to the
 gateway but not to the local subnet.
 
 After applying, the same query answers correctly:
@@ -117,7 +117,7 @@ Two details that matter when you do this on a machine you can only reach remotel
 `rp_filter` deserves a mention because it is the usual suspect and was not the problem here:
 it was already `2` (loose mode), which accepts asymmetric returns. Strict mode (`1`) would
 have dropped the inbound packets outright and produced the same silence for a different
-reason — worth checking, quick to rule out.
+reason, worth checking, quick to rule out.
 
 ## The other half: addresses that did not survive reboot
 
@@ -149,7 +149,7 @@ ln -sf /dev/null /etc/systemd/network/zzzz-dracut-default.network
 
 Masking rather than merely disabling NetworkManager matters, because a package upgrade will
 re-enable a service that was only disabled. The `/dev/null` symlink is the standard way to
-suppress a `systemd` unit file you do not own — `/etc/systemd/network` takes precedence over
+suppress a `systemd` unit file you do not own, `/etc/systemd/network` takes precedence over
 `/run/systemd/network` for a file of the same name, so the DHCP default is overridden
 without touching the initramfs.
 
@@ -161,7 +161,7 @@ manages; the dracut default is what claims the ones it does not.
 Multi-node clusters hide this class of problem behind load balancers and health checks: a
 node that answers on the wrong interface is drained and the failure reads as capacity loss.
 With one node there is nothing to drain, and the same fault presents as "the service is
-down for everyone outside the office" — which is why the network configuration of that one
+down for everyone outside the office", which is why the network configuration of that one
 node deserves to be written down and version-controlled rather than discovered twice.
 
 It is also a reminder of where a single-node deployment's real risk lives. Node loss is the

@@ -14,8 +14,8 @@ kubectl -n apps logs job/<most-recent-job>
 ```
 
 A successful run ends with `backup complete: demo-<timestamp>.sql.gz`. The job verifies the
-gzip stream and rejects a dump under 1 KB before uploading, because a truncated dump — the
-usual result of a pod evicted mid-run — otherwise uploads happily and is discovered only
+gzip stream and rejects a dump under 1 KB before uploading, because a truncated dump, the
+usual result of a pod evicted mid-run, otherwise uploads happily and is discovered only
 during a restore.
 
 ### List what is stored
@@ -81,7 +81,7 @@ The common causes, in order of likelihood:
 
 - **`renewBefore` is larger than `duration`.** cert-manager rejects the resource outright.
   This happens when shortening a long-lived certificate and forgetting the second field.
-- **The ClusterIssuer is not ready** — usually because the root CA Secret does not exist
+- **The ClusterIssuer is not ready**: usually because the root CA Secret does not exist
   yet. Check `kubectl get clusterissuer internal-ca -o wide`.
 - **A stale CertificateRequest** is blocking. Delete it; cert-manager creates a new one.
 
@@ -104,7 +104,7 @@ Work down this list; each step rules out one layer.
    clients regardless of trust. Check with `openssl x509 -noout -dates`.
 4. **Test with the right tool.** On macOS, `curl` validates against `/etc/ssl/cert.pem`,
    not the system keychain, so it fails even when trust is correctly installed. Use
-   `nscurl <url>` — it uses the same evaluation as Safari.
+   `nscurl <url>`, it uses the same evaluation as Safari.
 5. **Is the ingress routing?** `kubectl -n apps describe ingress demo-frontend` and check
    the backend has endpoints.
 
@@ -115,7 +115,7 @@ which is what makes it confusing:
 
 - **The API host's certificate is not trusted.** Browsers do not prompt on `fetch()`; the
   request fails silently and no JavaScript sees the response. Open the API hostname
-  directly in a tab — if it warns, that is the cause.
+  directly in a tab, if it warns, that is the cause.
 - **CORS.** Check that the Traefik middleware allows the frontend's exact origin,
   including port: `kubectl -n apps get middleware cors -o yaml`.
 

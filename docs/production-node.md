@@ -21,7 +21,7 @@ node looks like, and exactly where the two differ.
 Worth stating plainly, because the requirement to install Docker suggests otherwise: k3d
 means "k3s in Docker", and Docker's job there is to impersonate a *machine*. It runs one
 container that stands in for the node. Inside that container, k3s starts **containerd**, and
-pods run on containerd — the same runtime as production.
+pods run on containerd, the same runtime as production.
 
 ```
 lab          Colima → Docker → node container → k3s → containerd → pods
@@ -38,18 +38,18 @@ break on the real node; nothing here does.
 Everything in `platform/` and `apps/` moves between the two, with two exceptions worth
 knowing about:
 
-- **`ingressClassName`** — `traefik` in the lab, `haproxy` on the node.
+- **`ingressClassName`**: `traefik` in the lab, `haproxy` on the node.
 - **Traefik `Middleware`** for CORS is Traefik-specific. On HAProxy the same thing is done
   with `ingress.kubernetes.io/cors-*` annotations on the Ingress itself.
 
 Both are one-line changes, and both are the kind of detail that turns a working manifest
-into a broken one when moved between clusters — which is the reason to write them down.
+into a broken one when moved between clusters, which is the reason to write them down.
 
 ## Bringing up the node
 
-A condensed version of the procedure, for reference rather than for copy-paste — versions
+A condensed version of the procedure, for reference rather than for copy-paste, versions
 move and the upstream documentation is authoritative. The same steps, automated and
-idempotent, live in [`ansible/`](../ansible/) — that is the version meant to be run.
+idempotent, live in [`ansible/`](../ansible/), that is the version meant to be run.
 
 ```bash
 # Kubernetes needs swap off and bridged traffic visible to iptables
@@ -98,7 +98,7 @@ helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
 
 `hostNetwork=true` is what makes a single node work without a cloud load balancer: the
 controller binds 80 and 443 on the node itself. There is no LoadBalancer service to
-provision and no external IP to wait for — the node's address *is* the entry point.
+provision and no external IP to wait for, the node's address *is* the entry point.
 
 ## Storage
 
@@ -125,5 +125,5 @@ StorageClass at all.
   stored off the machine, is what makes the cluster rebuildable rather than merely
   restartable.
 - **Node pressure.** With one node there is nowhere to evict to. Resource requests on every
-  workload are not bureaucracy here — they are what stops one pod from taking the node
+  workload are not bureaucracy here, they are what stops one pod from taking the node
   down with it.

@@ -43,7 +43,7 @@ flowchart TB
 ### One node, and where that hurts
 
 A single node means node loss is downtime. That is acceptable for an internal system with
-tens of users, where an hour of downtime is an inconvenience rather than lost revenue — and
+tens of users, where an hour of downtime is an inconvenience rather than lost revenue, and
 it is not acceptable for anything customer-facing.
 
 What single-node genuinely costs:
@@ -61,7 +61,7 @@ administrator can hold in their head. At this scale that is usually the right tr
 
 ### Certificates live for a year, not a decade
 
-A private CA invites long-lived certificates — nobody is charging per issuance, so why not
+A private CA invites long-lived certificates, nobody is charging per issuance, so why not
 ten years? Because Apple's TLS stack rejects any server certificate valid beyond 398 days,
 and the resulting failure looks like a trust problem rather than a policy one. Chrome and
 Firefox exempt locally-installed roots, so the breakage appears only on Macs and iPhones,
@@ -84,7 +84,7 @@ Full write-up: [apple-tls-398](https://github.com/Walaskien/apple-tls-398).
 The demo serves its UI and its API from different hostnames because that is what real
 deployments do, and because the failure mode is instructive: a user clicks through a
 certificate warning on the UI host and assumes TLS is dealt with. The API host never
-prompts — browsers fail `fetch()` silently on an untrusted certificate — so the
+prompts, browsers fail `fetch()` silently on an untrusted certificate, so the
 application appears to log in successfully on the server while the browser discards the
 response.
 
@@ -105,8 +105,8 @@ platform exactly, the cluster is genuinely disposable.
 The Secret manifests contain literal passwords. That is defensible only because this
 cluster is disposable, listens on localhost, and holds nothing.
 
-For real use the same manifests would take values from an external secret store — Sealed
-Secrets or External Secrets Operator — so the repository holds references rather than
+For real use the same manifests would take values from an external secret store, Sealed
+Secrets or External Secrets Operator, so the repository holds references rather than
 credentials. Committing this decision explicitly is preferable to leaving a reader
 wondering whether the author knows the difference.
 
@@ -114,7 +114,7 @@ wondering whether the author knows the difference.
 
 In roughly the order the pain arrives:
 
-1. **Move the database off the cluster** — managed PostgreSQL, or a dedicated host with
+1. **Move the database off the cluster**: managed PostgreSQL, or a dedicated host with
    streaming replication. It is the component whose loss cannot be undone, and the first
    thing worth taking out of a single-node blast radius.
 2. **Add nodes for the stateless tier**, so ingress and application pods survive a node

@@ -3,7 +3,7 @@
 # rather than whatever the distribution bundles).
 #
 # Deliberately small. On a single node the useful questions are "is it running"
-# and "what changed" — a full Prometheus stack costs more memory than the
+# and "what changed", a full Prometheus stack costs more memory than the
 # workloads it watches.
 
 ---

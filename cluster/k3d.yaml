@@ -1,4 +1,4 @@
-# Single-node cluster. One server, no agents — the same shape as a bare-metal
+# Single-node cluster. One server, no agents, the same shape as a bare-metal
 # k3s or kubeadm node, so manifests here transfer without changes.
 apiVersion: k3d.io/v1alpha5
 kind: Simple

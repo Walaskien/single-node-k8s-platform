@@ -3,7 +3,7 @@
 # deal with keys themselves.
 
 ---
-# Bootstrap issuer. Its only job is to sign the root CA below — a root has to
+# Bootstrap issuer. Its only job is to sign the root CA below, a root has to
 # be signed by something, and for a private PKI that something is itself.
 apiVersion: cert-manager.io/v1
 kind: Issuer

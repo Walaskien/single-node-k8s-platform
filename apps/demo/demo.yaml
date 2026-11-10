@@ -7,7 +7,7 @@ metadata:
 spec:
   secretName: app-tls
   dnsNames: [app.example.internal]
-  duration: 8760h # 365 days — under Apple's 398-day ceiling
+  duration: 8760h # 365 days, under Apple's 398-day ceiling
   renewBefore: 1440h
   issuerRef:
     name: internal-ca
@@ -45,7 +45,7 @@ data:
     </style>
     <h1>Platform demo</h1>
     <p>The page below is served from <code>app.example.internal</code> and calls
-       <code>api.example.internal</code> — a separate host with its own certificate.</p>
+       <code>api.example.internal</code>, a separate host with its own certificate.</p>
     <pre id="out">calling API…</pre>
     <script>
       fetch("https://api.example.internal:8443/", { mode: "cors" })
@@ -54,7 +54,7 @@ data:
         .catch(e => out.textContent =
           "API call failed: " + e +
           "\n\nIf this fails while the page itself loaded, the API certificate " +
-          "is not trusted. Browsers do not prompt for fetch() — they fail silently.");
+          "is not trusted. Browsers do not prompt for fetch(), they fail silently.");
     </script>
 
 ---

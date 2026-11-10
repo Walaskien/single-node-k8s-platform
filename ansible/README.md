@@ -20,7 +20,7 @@ ansible-playbook site.yml
 | `control_plane` | `kubeadm init`, kubeconfig for root, remove the control-plane taint, flannel CNI |
 | `ingress` | helm, then HAProxy Ingress with `hostNetwork` so the node's own IP is the entrypoint |
 | `storage` | local-path provisioner, marked the default StorageClass |
-| `cert_manager` | optional (`install_cert_manager: true`) — installs cert-manager; issuers live in `platform/` |
+| `cert_manager` | optional (`install_cert_manager: true`), installs cert-manager; issuers live in `platform/` |
 
 ## Design notes
 
@@ -28,7 +28,7 @@ ansible-playbook site.yml
   reference node (Kubernetes 1.36, flannel, HAProxy Ingress, local-path). Upgrades are a
   deliberate edit, not drift.
 - **Idempotent.** `kubeadm init` is guarded by `creates:`, package and service state is
-  declarative, and `kubectl apply` is convergent — a second run changes nothing.
+  declarative, and `kubectl apply` is convergent, a second run changes nothing.
 - **Single-node firewall.** Only 80/443 are opened. kubelet, flannel and etcd traffic never
   leaves the host, so the usual inter-node ports stay closed. Set `open_api_port: true` if you
   drive `kubectl` from another machine.

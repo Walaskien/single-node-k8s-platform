@@ -41,7 +41,7 @@ platform: ## Install cert-manager, PKI, storage, database and observability
 	kubectl apply -f platform/observability/
 
 wait-traefik: ## Block until k3s has finished installing Traefik
-	@echo "waiting for Traefik — k3s installs it asynchronously after the API is up,"
+	@echo "waiting for Traefik, k3s installs it asynchronously after the API is up,"
 	@echo "so applying an Ingress or Middleware too early fails on a missing CRD"
 	@for i in $$(seq 1 90); do \
 		if kubectl get crd middlewares.traefik.io >/dev/null 2>&1 \
@@ -104,16 +104,16 @@ smoke: ## Verify the demo endpoints answer over the internal CA (used by CI and 
 	@for i in $$(seq 1 20); do \
 		curl -fsS --resolve app.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
 			https://app.$(DOMAIN):8443/ 2>/dev/null | grep -q "Platform demo" \
-			&& { echo "  OK — frontend served, certificate trusted"; break; }; \
-		[ $$i = 20 ] && { echo "  FAIL — frontend did not serve in time"; rm -f internal-root-ca.pem; exit 1; }; \
+			&& { echo "  OK, frontend served, certificate trusted"; break; }; \
+		[ $$i = 20 ] && { echo "  FAIL, frontend did not serve in time"; rm -f internal-root-ca.pem; exit 1; }; \
 		sleep 3; \
 	done
 	@echo "→ api       https://api.$(DOMAIN):8443/"
 	@for i in $$(seq 1 20); do \
 		curl -fsS --resolve api.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
 			https://api.$(DOMAIN):8443/ 2>/dev/null | grep -q "internal certificate" \
-			&& { echo "  OK — api served, certificate trusted"; break; }; \
-		[ $$i = 20 ] && { echo "  FAIL — api did not serve in time"; rm -f internal-root-ca.pem; exit 1; }; \
+			&& { echo "  OK, api served, certificate trusted"; break; }; \
+		[ $$i = 20 ] && { echo "  FAIL, api did not serve in time"; rm -f internal-root-ca.pem; exit 1; }; \
 		sleep 3; \
 	done
 	@rm -f internal-root-ca.pem
