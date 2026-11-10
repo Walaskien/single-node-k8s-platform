@@ -20,6 +20,23 @@ make status  # what is running, what URLs exist, when certificates expire
 make down    # destroy everything
 ```
 
+## How it fits together
+
+```mermaid
+flowchart LR
+    browser["Browser<br/>trusts the internal CA"] --> traefik["Traefik ingress"]
+    subgraph node["Single Kubernetes node"]
+        traefik --> apps["demo frontend and API"]
+        traefik --> grafana["Grafana"]
+        apps --> postgres[("PostgreSQL")]
+        backup["Nightly backup CronJob"] --> postgres
+        backup --> minio[("MinIO, S3 API")]
+        ca["cert-manager<br/>self-signed root CA"] -.->|"365-day leaf certificates"| traefik
+    end
+```
+
+The full component diagram is in [`docs/architecture.md`](docs/architecture.md).
+
 ## Continuous integration
 
 Because the claim is that this runs, CI proves it on every push and pull request
@@ -141,6 +158,13 @@ diagnose it, is written up separately in
   built and where it differs from the k3d lab
 - [`ansible/`](ansible/) — that build as an idempotent playbook: bare Rocky Linux 10 host
   in, working single-node cluster out, in one command
+
+## What I would improve next
+
+- The Ansible roles under `ansible/` are linted in CI (`ansible-lint`) but CI does not run them. They have not been exercised end to end by this repository's automation, so treat them as a reviewed starting point and test on a spare Rocky Linux host.
+- Run the roles against a disposable VM in CI to prove the "bare host in, cluster out" claim.
+- Add a restore test to CI: restore the latest backup into a scratch database and compare row counts.
+- Add Prometheus and alerting; observability here is only Grafana and metrics-server.
 
 ## License
 
