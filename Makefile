@@ -123,7 +123,8 @@ backup-test: ## Back up now, restore the dump into a scratch database, compare r
 		"create table if not exists backup_probe as select generate_series(1, 42) as id"
 	kubectl -n $(NAMESPACE) delete job backup-test postgres-restore-test --ignore-not-found
 	kubectl -n $(NAMESPACE) create job backup-test --from=cronjob/postgres-backup
-	kubectl -n $(NAMESPACE) wait --for=condition=complete job/backup-test --timeout=180s
+	@kubectl -n $(NAMESPACE) wait --for=condition=complete job/backup-test --timeout=180s \
+		|| { kubectl -n $(NAMESPACE) get pods; kubectl -n $(NAMESPACE) logs job/backup-test --tail=50; exit 1; }
 	kubectl apply -f tests/restore-test.yaml
 	@kubectl -n $(NAMESPACE) wait --for=condition=complete job/postgres-restore-test --timeout=180s \
 		|| { kubectl -n $(NAMESPACE) logs job/postgres-restore-test; exit 1; }
