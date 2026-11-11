@@ -14,7 +14,7 @@ flowchart TB
             api["demo-api"]
             grafana["Grafana"]
             postgres[("PostgreSQL<br/>StatefulSet + PVC")]
-            minio[("MinIO<br/>S3 API")]
+            s3[("SeaweedFS<br/>S3 API")]
             backup["postgres-backup<br/>CronJob, nightly"]
         end
 
@@ -35,7 +35,7 @@ flowchart TB
     issuer -.->|"issues 365-day leaf certs"| traefik
 
     backup -->|"pg_dump"| postgres
-    backup -->|"upload + prune"| minio
+    backup -->|"upload + prune"| s3
 ```
 
 ## Decisions
@@ -51,7 +51,7 @@ What single-node genuinely costs:
 - **No rolling node upgrades.** Kernel or kubelet upgrades are a maintenance window.
 - **`Recreate` deployment strategy for anything with a volume.** A ReadWriteOnce volume
   cannot be attached to an old and a new pod at once, so those workloads have a brief gap
-  on every deploy. This is why MinIO declares it explicitly rather than inheriting
+  on every deploy. This is why the S3 Deployment declares it explicitly rather than inheriting
   `RollingUpdate` and failing confusingly.
 - **Storage is the node.** Local-path volumes do not survive the node. Backups are
   therefore not a nice-to-have; they are the only durability the design has.

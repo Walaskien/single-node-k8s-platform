@@ -1,0 +1,141 @@
+# S3-compatible object storage: SeaweedFS in single-process mode. Backups land
+# here; applications can use it for uploads.
+# This used to be MinIO. Its images are no longer published (the pinned tags
+# could not be pulled any more), so the backup job had nowhere to write.
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-credentials
+  namespace: apps
+type: Opaque
+stringData:
+  S3_ACCESS_KEY: backup
+  S3_SECRET_KEY: backup-local-only
+  # Same values again, in the format the SeaweedFS S3 gateway reads.
+  s3.json: |
+    {"identities": [{"name": "backup",
+      "credentials": [{"accessKey": "backup", "secretKey": "backup-local-only"}],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3
+  namespace: apps
+spec:
+  selector:
+    app: s3
+  ports:
+    - name: s3
+      port: 8333
+      targetPort: 8333
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: s3-data
+  namespace: apps
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3
+  namespace: apps
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # a single RWO volume cannot be held by two pods at once
+  selector:
+    matchLabels:
+      app: s3
+  template:
+    metadata:
+      labels:
+        app: s3
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:4.53
+          args: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+          ports:
+            - containerPort: 8333
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 8333
+            initialDelaySeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: s3-data
+        - name: s3-config
+          secret:
+            secretName: s3-credentials
+            items:
+              - key: s3.json
+                path: s3.json
+
+---
+# Creates the backups bucket once the S3 endpoint answers. A Job rather than an
+# init container: bucket creation belongs to the platform's lifecycle, not to
+# the storage pod's, and it must not re-run on every restart.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s3-bootstrap
+  namespace: apps
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: aws
+          image: amazon/aws-cli:2.39.7
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3-credentials
+                  key: S3_ACCESS_KEY
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-credentials
+                  key: S3_SECRET_KEY
+            - name: AWS_REQUEST_CHECKSUM_CALCULATION
+              value: when_required
+            - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+              value: when_required
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              s3="aws --endpoint-url http://s3:8333"
+              until $s3 s3 ls >/dev/null 2>&1; do
+                echo "waiting for s3..."; sleep 3
+              done
+              $s3 s3api head-bucket --bucket backups 2>/dev/null || $s3 s3 mb s3://backups
+              echo "bucket ready"

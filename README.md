@@ -3,7 +3,7 @@
 [![ci](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml)
 
 A small lab of a single-node Kubernetes setup for an internal application: private CA with
-cert-manager, TLS ingress on internal hostnames, PostgreSQL with a nightly backup to MinIO,
+cert-manager, TLS ingress on internal hostnames, PostgreSQL with a nightly backup to S3-compatible storage,
 Grafana and metrics-server. It runs on k3d, so it starts on a laptop with `make up`.
 
 The setup it is modelled on is upstream Kubernetes installed with `kubeadm` on one Rocky
@@ -28,7 +28,7 @@ flowchart LR
         traefik --> grafana["Grafana"]
         apps --> postgres[("PostgreSQL")]
         backup["Nightly backup CronJob"] --> postgres
-        backup --> minio[("MinIO, S3 API")]
+        backup --> s3[("SeaweedFS, S3 API")]
         ca["cert-manager<br/>self-signed root CA"] -.->|"365-day leaf certificates"| traefik
     end
 ```
@@ -41,8 +41,8 @@ More detail and the reasoning behind the choices: [`docs/architecture.md`](docs/
 | Ingress | Traefik (bundled with k3s) | hostname routing, CORS middleware |
 | PKI | cert-manager, self-signed root | 10-year root, 365-day leaf certificates |
 | Database | PostgreSQL 17 (StatefulSet) | one replica, 2 Gi volume |
-| Backups | CronJob, `pg_dump` to MinIO | 02:00 daily, keeps the last 14, checks the dump before upload |
-| Object storage | MinIO | S3 API for backups |
+| Backups | CronJob, `pg_dump` to the S3 service | 02:00 daily, keeps the last 14, checks the dump before upload |
+| Object storage | SeaweedFS (single process) | S3 API for backups; MinIO images are no longer published |
 | Observability | metrics-server, Grafana | no Prometheus or alerting |
 | Demo app | static frontend + API | two hostnames, to exercise TLS and CORS |
 
@@ -97,7 +97,7 @@ private CAs, are in [apple-tls-398](https://github.com/Walaskien/apple-tls-398).
 
 ```
 cluster/        k3d cluster definition and port mappings
-platform/       cert-manager issuers, PostgreSQL, MinIO, Grafana
+platform/       cert-manager issuers, PostgreSQL, S3 (SeaweedFS), Grafana
 apps/demo/      sample frontend and API with Ingress and Certificates
 tests/          restore test job used by `make backup-test`
 ansible/        kubeadm node as a playbook (not run end to end)

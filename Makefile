@@ -32,7 +32,7 @@ platform: ## Install cert-manager, PKI, storage, database and observability
 	kubectl apply -f platform/cert-manager/
 	@echo "waiting for the root CA to be issued..."
 	kubectl -n cert-manager wait --for=condition=Ready certificate/internal-root-ca --timeout=120s
-	kubectl apply -f platform/minio/
+	kubectl apply -f platform/s3/
 	kubectl apply -f platform/postgres/
 	helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update
 	helm upgrade --install metrics-server metrics-server/metrics-server \

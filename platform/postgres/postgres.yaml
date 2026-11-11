@@ -87,7 +87,7 @@ spec:
             storage: 2Gi
 
 ---
-# Nightly logical backup pushed to MinIO. Retention is handled by keeping the
+# Nightly logical backup pushed to the S3 service (platform/s3). Retention is handled by keeping the
 # last N objects; anything older is pruned in the same job so a forgotten
 # bucket cannot fill the disk.
 apiVersion: batch/v1
@@ -112,8 +112,6 @@ spec:
               envFrom:
                 - secretRef:
                     name: postgres-credentials
-                - secretRef:
-                    name: minio-credentials
               command:
                 - /bin/sh
                 - -c
@@ -142,27 +140,34 @@ spec:
                   size=$(stat -c %s "$file")
 
                   echo "uploading (${size} bytes)..."
-                  aws --endpoint-url "http://minio:9000" \
+                  aws --endpoint-url "http://s3:8333" \
                     s3 cp "$file" "s3://backups/postgres/"
 
                   echo "pruning all but the 14 most recent..."
-                  aws --endpoint-url "http://minio:9000" \
+                  aws --endpoint-url "http://s3:8333" \
                     s3 ls s3://backups/postgres/ \
                     | sort -r | tail -n +15 | awk '{print $4}' \
                     | while read -r old; do
-                        [ -n "$old" ] && aws --endpoint-url "http://minio:9000" \
+                        [ -n "$old" ] && aws --endpoint-url "http://s3:8333" \
                           s3 rm "s3://backups/postgres/$old"
                       done
 
                   echo "backup complete: demo-${stamp}.sql.gz"
               env:
+                # newer aws-cli sends checksum trailers that some S3 servers reject
+                - name: AWS_REQUEST_CHECKSUM_CALCULATION
+                  value: when_required
+                - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+                  value: when_required
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
                 - name: AWS_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
-                      name: minio-credentials
-                      key: MINIO_ROOT_USER
+                      name: s3-credentials
+                      key: S3_ACCESS_KEY
                 - name: AWS_SECRET_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: minio-credentials
-                      key: MINIO_ROOT_PASSWORD
+                      name: s3-credentials
+                      key: S3_SECRET_KEY

@@ -19,9 +19,13 @@ example from a pod evicted mid-run) would otherwise upload fine and show up only
 
 ### List what is stored
 
+The S3 service is only reachable inside the cluster. Forward it and use a local `aws` CLI
+(the demo credentials are in `platform/s3/seaweedfs.yaml`):
+
 ```console
-kubectl -n apps exec deploy/minio -- \
-  mc --no-color ls local/backups/postgres/
+kubectl -n apps port-forward svc/s3 18333:8333 &
+export AWS_ACCESS_KEY_ID=backup AWS_SECRET_ACCESS_KEY=backup-local-only AWS_DEFAULT_REGION=us-east-1
+aws --endpoint-url http://127.0.0.1:18333 s3 ls s3://backups/postgres/
 ```
 
 ### Restore
@@ -30,10 +34,9 @@ Restoring over a live database is destructive. Take a fresh dump first if the cu
 has any value.
 
 ```console
-# 1. pick a backup and copy it out of MinIO
-kubectl -n apps exec deploy/minio -- mc ls local/backups/postgres/
-kubectl -n apps exec deploy/minio -- mc cat local/backups/postgres/demo-20260908-020000.sql.gz \
-  > ./demo-20260908-020000.sql.gz
+# 1. pick a backup and copy it out of S3 (port-forward and credentials as above)
+aws --endpoint-url http://127.0.0.1:18333 s3 ls s3://backups/postgres/
+aws --endpoint-url http://127.0.0.1:18333 s3 cp s3://backups/postgres/demo-20260908-020000.sql.gz .
 
 # 2. put it into the postgres pod
 kubectl -n apps exec -i postgres-0 -- sh -c 'cat > /tmp/restore.sql.gz' \
