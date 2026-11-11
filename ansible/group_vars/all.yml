@@ -1,6 +1,6 @@
 ---
-# Versions are pinned to the reference production node (Rocky Linux 10 / kubeadm)
-# so a fresh host comes up identical to it. Bump deliberately, not by drift.
+# Versions are pinned so a fresh host comes up the same every time.
+# Bump deliberately, not by drift.
 
 kubernetes_version: "1.36.3"        # kubelet / kubeadm / kubectl
 kubernetes_repo_minor: "v1.36"      # pkgs.k8s.io stable stream

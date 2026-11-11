@@ -1,0 +1,52 @@
+# One-off job for `make backup-test`: restore the newest backup from MinIO into a
+# scratch database and compare a row count with the live one. Not applied by `make up`.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore-test
+  namespace: apps
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: restore-test
+          image: postgres:17-alpine
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              apk add --no-cache aws-cli >/dev/null
+              s3="aws --endpoint-url http://minio:9000"
+              export PGPASSWORD="$POSTGRES_PASSWORD"
+              psql_at() { psql -h postgres -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atq; }
+
+              latest=$($s3 s3 ls s3://backups/postgres/ | sort | tail -n 1 | awk '{print $4}')
+              echo "restoring $latest into scratch database"
+              $s3 s3 cp "s3://backups/postgres/$latest" /tmp/restore.sql.gz
+
+              echo "drop database if exists restore_test" | psql_at postgres
+              echo "create database restore_test" | psql_at postgres
+              gunzip -c /tmp/restore.sql.gz | psql_at restore_test >/dev/null
+
+              live=$(echo "select count(*) from backup_probe" | psql_at "$POSTGRES_DB")
+              restored=$(echo "select count(*) from backup_probe" | psql_at restore_test)
+              echo "backup_probe rows: live=$live restored=$restored"
+              echo "drop database restore_test" | psql_at postgres
+              [ "$live" = "$restored" ] && [ "$live" -gt 0 ]

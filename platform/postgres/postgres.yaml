@@ -2,8 +2,7 @@
 #
 # On a single-node cluster the database is the only component whose loss is
 # unrecoverable, so it gets the attention: persistent storage, a backup on a
-# schedule, and a restore procedure that is written down and tested
-# (docs/runbook.md).
+# schedule, and a restore procedure written down in docs/runbook.md.
 
 ---
 # Demo credentials, generated at deploy time in a real setup. Committing a

@@ -2,22 +2,20 @@
 
 [![ci](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Walaskien/single-node-k8s-platform/actions/workflows/ci.yml)
 
-A reproducible single-node Kubernetes environment for internal line-of-business
-applications: private PKI, TLS ingress on internal hostnames, a stateful database with
-scheduled backups, S3-compatible object storage, and observability.
+A small lab of a single-node Kubernetes setup for an internal application: private CA with
+cert-manager, TLS ingress on internal hostnames, PostgreSQL with a nightly backup to MinIO,
+Grafana and metrics-server. It runs on k3d, so it starts on a laptop with `make up`.
 
-The deployment it models is **upstream Kubernetes installed with `kubeadm`** on a single
-node, containerd, flannel, HAProxy ingress, local storage, not a lightweight
-distribution. One node is a capacity decision, not a simplification: it is a complete
-control plane, just not a redundant one.
-
-Everything comes up with one command and tears down with another. The point is that a
-reviewer can run it, not just read about it.
+The setup it is modelled on is upstream Kubernetes installed with `kubeadm` on one Rocky
+Linux node (containerd, flannel, HAProxy Ingress, local-path storage). That part is only
+documented and scripted, see [Lab versus kubeadm](#lab-versus-kubeadm).
 
 ```console
-make up      # create the cluster and deploy the whole platform
-make status  # what is running, what URLs exist, when certificates expire
-make down    # destroy everything
+make up      # create the k3d cluster and deploy everything
+make status  # pods, ingress hostnames, certificate state
+make smoke   # curl both demo hostnames over the internal CA
+make backup-test  # run a backup, restore it into a scratch database, compare row counts
+make down    # delete the cluster
 ```
 
 ## How it fits together
@@ -35,136 +33,99 @@ flowchart LR
     end
 ```
 
-The full component diagram is in [`docs/architecture.md`](docs/architecture.md).
+More detail and the reasoning behind the choices: [`docs/architecture.md`](docs/architecture.md).
+
+| Layer | Component | Notes |
+|---|---|---|
+| Cluster | k3d (k3s in Docker) | the kubeadm node is described in `docs/kubeadm-node.md` |
+| Ingress | Traefik (bundled with k3s) | hostname routing, CORS middleware |
+| PKI | cert-manager, self-signed root | 10-year root, 365-day leaf certificates |
+| Database | PostgreSQL 17 (StatefulSet) | one replica, 2 Gi volume |
+| Backups | CronJob, `pg_dump` to MinIO | 02:00 daily, keeps the last 14, checks the dump before upload |
+| Object storage | MinIO | S3 API for backups |
+| Observability | metrics-server, Grafana | no Prometheus or alerting |
+| Demo app | static frontend + API | two hostnames, to exercise TLS and CORS |
 
 ## Continuous integration
 
-Because the claim is that this runs, CI proves it on every push and pull request
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request:
 
-- **validate**: `yamllint` on every manifest, then `kubeconform` checks each object
-  against the Kubernetes schemas. Core objects are validated strictly; CRDs whose schema
-  is not bundled (cert-manager, Traefik) are skipped rather than guessed at.
-- **e2e**: creates a throwaway k3d cluster, runs `make up`, and then `make smoke` curls
-  both demo hostnames over the internal CA. The job fails if a certificate never issues or
-  an endpoint does not serve, so a change that breaks the stack cannot go green.
+- **validate**: `yamllint`, `kubeconform` (core objects strictly; CRDs without a bundled
+  schema, such as cert-manager and Traefik, are skipped) and `ansible-lint` on the playbook.
+- **e2e**: creates a k3d cluster, runs `make up`, then `make smoke` (both demo hostnames
+  served over the internal CA) and `make backup-test` (backup, restore into a scratch
+  database, row count compared).
 
-`make smoke` is the same check CI runs, so you can reproduce a green build locally.
+The CI job does not run the Ansible playbook.
 
-## Why the lab runs k3d and the real thing runs kubeadm
+## Lab versus kubeadm
 
-The target is a `kubeadm` cluster on a single node: a full control plane, API server, etcd,
-scheduler, controller-manager, with the control-plane taint removed so workloads schedule
-on it. The procedure for building that node is in
-[`docs/production-node.md`](docs/production-node.md).
-
-This repository provisions **k3d** instead, for one reason: a reviewer should be able to run
-it on a laptop in a few minutes without dedicating a machine. `kubeadm` wants a whole host,
-swap disabled and kernel modules loaded; k3d wants a container.
-
-That choice changes nothing above the cluster layer. The manifests in `platform/` and
-`apps/` are plain Kubernetes objects and apply unchanged to either, and the pod runtime is
-containerd in both. Docker in the lab only hosts the container that stands in for the node.
-The differences are confined to the ingress controller, the CNI and the storage class, and
-are enumerated in `docs/production-node.md`.
-
-## Why single-node
-
-Small internal deployments, a document system, an ERP, an intranet, often serve tens of
-users, not thousands. A three-node control plane costs more to run and to reason about
-than the availability it buys at that scale, and the failure most likely to hurt is a lost
-database, not a lost node.
-
-So this design accepts single-node as a deliberate tradeoff and spends the effort on the
-things that actually bite: **backups that are verified**, **certificates that renew
-themselves**, and **a documented recovery path**. Those are addressed in
-[`docs/runbook.md`](docs/runbook.md).
-
-What this is not: a high-availability production reference. Node loss means downtime, and
-[`docs/architecture.md`](docs/architecture.md) is explicit about where that hurts and what
-changes when you outgrow it.
-
-## What gets deployed
-
-| Layer | Component | Why |
-|---|---|---|
-| Cluster | `kubeadm` on a node; k3d in the lab | Full upstream control plane, single node; k3d only so this runs on a laptop |
-| Runtime | containerd | Same in both environments, nothing here uses the Docker socket |
-| Ingress | Traefik + TLS | One entry point, hostname-based routing |
-| PKI | cert-manager, self-signed root CA | Internal hostnames need certificates nobody can buy |
-| Database | PostgreSQL (StatefulSet) | Persistent state, the part worth protecting |
-| Backups | CronJob → object storage | `pg_dump` on a schedule, with restore documented |
-| Object storage | MinIO | S3 API for backups and app uploads, without a cloud account |
-| Observability | metrics-server, Grafana | Enough to answer "is it healthy" and "what changed" |
-| Demo app | Static frontend + API | Two hostnames, so cross-origin and TLS behave like the real thing |
-
-## Layout
-
-```
-cluster/            k3d cluster definition and host port mappings
-platform/           everything that supports applications
-  cert-manager/       root CA, ClusterIssuer, certificate policy
-  ingress/            ingress class, TLS defaults
-  postgres/           StatefulSet, service, backup CronJob
-  minio/              object storage and bucket bootstrap
-  observability/      metrics-server, Grafana
-apps/demo/          a sample workload that exercises the platform
-docs/               architecture decisions and the operational runbook
-```
-
-Platform and applications are separated on purpose. Platform pieces have their own
-lifecycle: they are installed once, upgraded rarely, and shared by every application.
-Mixing them into application manifests is what makes clusters impossible to rebuild.
+The kubeadm node needs a whole host (swap off, kernel modules), so the lab uses k3d: one
+container stands in for the node, and pods still run on containerd. The manifests in
+`platform/` and `apps/` are plain Kubernetes objects. What differs is the ingress controller
+(Traefik in the lab, HAProxy Ingress on the node), the CNI and the storage class. The list
+and the manual `kubeadm` steps are in [`docs/kubeadm-node.md`](docs/kubeadm-node.md); the
+same steps as a playbook are in [`ansible/`](ansible/).
 
 ## Requirements
 
-- Docker or Colima
-- `k3d`, `kubectl`, `helm`
-- `make`
+Docker or Colima, `k3d`, `kubectl`, `helm`, `make`.
 
 ```console
 brew install k3d kubectl helm colima docker
 colima start --cpu 4 --memory 4 --disk 20
 ```
 
-Four gigabytes is enough for the whole stack, it was developed and tested on an 8 GB
-MacBook Air, with the VM given half of that. `make up` takes about five minutes on a cold
-cache, most of it pulling images.
+It was run on an 8 GB MacBook Air with a 4 GB Colima VM. `make up` takes about five minutes
+on a cold image cache, mostly pulling images. The hostnames are `*.example.internal`;
+`make hosts` prints the `/etc/hosts` line and the URL (port 8443).
 
 ## Certificates and trust
 
-The platform issues its own certificates from a self-signed root. Browsers will not trust
-that root until you install it:
+The root CA is self-signed, so browsers do not trust it until you install it:
 
 ```console
-make trust-ca    # prints the root CA and how to install it per platform
+make trust-ca    # writes internal-root-ca.pem and prints install commands
 ```
 
-Leaf certificates are issued for **365 days**, not the ten years a private CA tempts you
-into. Apple's TLS stack rejects any server certificate valid longer than 398 days, which
-produces a failure that looks like a trust problem and is not one. That story, and how to
-diagnose it, is written up separately in
-[apple-tls-398](https://github.com/Walaskien/apple-tls-398).
+Leaf certificates are valid for 365 days. A 10-year leaf certificate from a private CA was
+rejected by Apple clients even though the CA was trusted, so the leaves here stay well under
+Apple's documented validity limits. Details, and a correction about which limit applies to
+private CAs, are in [apple-tls-398](https://github.com/Walaskien/apple-tls-398).
+
+## Layout
+
+```
+cluster/        k3d cluster definition and port mappings
+platform/       cert-manager issuers, PostgreSQL, MinIO, Grafana
+apps/demo/      sample frontend and API with Ingress and Certificates
+tests/          restore test job used by `make backup-test`
+ansible/        kubeadm node as a playbook (not run end to end)
+docs/           architecture, runbook, kubeadm node, dual-homed node
+```
+
+## Limitations
+
+- One node: node loss means downtime, and local-path volumes go with the node.
+- Secrets in the manifests are literal demo passwords. Do not reuse them.
+- The restore test is a manual and CI check of one table (`backup_probe`), not a regular
+  drill of a real database.
+- The Ansible roles are linted but have not been run against a host, so treat them as a
+  starting point and try them on a spare Rocky Linux VM.
+- Observability is Grafana and metrics-server only.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md): component diagram, data flows, and the
-  decisions behind them, including what to change when this outgrows one node
-- [`docs/runbook.md`](docs/runbook.md): backup and restore, certificate rotation,
-  common failures and how they present
-- [`docs/dual-homed-node.md`](docs/dual-homed-node.md): why a node with two interfaces
-  answers on the wrong one, and how to pin its addresses so a reboot stays boring
-- [`docs/production-node.md`](docs/production-node.md): how the real `kubeadm` node is
-  built and where it differs from the k3d lab
-- [`ansible/`](ansible/): that build as an idempotent playbook: bare Rocky Linux 10 host
-  in, working single-node cluster out, in one command
+- [`docs/architecture.md`](docs/architecture.md): components, trade-offs of one node, what to change when it outgrows it
+- [`docs/runbook.md`](docs/runbook.md): backup and restore, certificates, common failures
+- [`docs/kubeadm-node.md`](docs/kubeadm-node.md): the kubeadm node and how it differs from the lab
+- [`docs/dual-homed-node.md`](docs/dual-homed-node.md): a node with two interfaces answering on the wrong one
 
 ## What I would improve next
 
-- The Ansible roles under `ansible/` are linted in CI (`ansible-lint`) but CI does not run them. They have not been exercised end to end by this repository's automation, so treat them as a reviewed starting point and test on a spare Rocky Linux host.
-- Run the roles against a disposable VM in CI to prove the "bare host in, cluster out" claim.
-- Add a restore test to CI: restore the latest backup into a scratch database and compare row counts.
-- Add Prometheus and alerting; observability here is only Grafana and metrics-server.
+- Run the Ansible roles against a disposable VM in CI.
+- Prometheus and alerting.
+- Replace the committed demo secrets with Sealed Secrets or External Secrets.
 
 ## License
 

@@ -1,8 +1,8 @@
-# Provisioning the production node with Ansible
+# Provisioning the kubeadm node with Ansible
 
-`docs/production-node.md` describes the single-node `kubeadm` cluster this project
-targets, by hand. This playbook is that procedure as code: a bare Rocky Linux 10 /
-RHEL-family host in, a working cluster out, in one command.
+`docs/kubeadm-node.md` describes the single-node `kubeadm` cluster this project is
+modelled on, by hand. This playbook is the same procedure as code, for a bare Rocky Linux 10
+(RHEL family) host.
 
 ```bash
 ansible-galaxy collection install -r requirements.yml
@@ -24,8 +24,8 @@ ansible-playbook site.yml
 
 ## Design notes
 
-- **Pinned versions.** Every component version lives in `group_vars/all.yml`, pinned to the
-  reference node (Kubernetes 1.36, flannel, HAProxy Ingress, local-path). Upgrades are a
+- **Pinned versions.** Every component version lives in `group_vars/all.yml`, pinned (Kubernetes 1.36,
+  flannel, HAProxy Ingress, local-path). Upgrades are a
   deliberate edit, not drift.
 - **Idempotent.** `kubeadm init` is guarded by `creates:`, package and service state is
   declarative, and `kubectl apply` is convergent, a second run changes nothing.
@@ -35,5 +35,6 @@ ansible-playbook site.yml
 
 ## Verified
 
-`ansible-lint` and `ansible-playbook --syntax-check` run clean. A full end-to-end run needs a
-throwaway Rocky 10 VM; nothing here has been run against a live production node.
+`ansible-lint` and `ansible-playbook --syntax-check` run clean. The playbook has not been
+run end to end, in CI or by hand: that needs a throwaway Rocky 10 VM. Treat it as a reviewed
+starting point.

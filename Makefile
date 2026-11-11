@@ -5,7 +5,7 @@ DOMAIN       := example.internal
 HOSTS        := app.$(DOMAIN) api.$(DOMAIN) s3.$(DOMAIN) grafana.$(DOMAIN)
 
 .DEFAULT_GOAL := help
-.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs wait-apps logs smoke lint
+.PHONY: help up down status hosts trust-ca cluster platform apps wait-certs wait-apps logs smoke backup-test lint
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -59,13 +59,13 @@ wait-certs: ## Block until every certificate has been issued
 	kubectl -n $(NAMESPACE) wait --for=condition=Ready certificate --all --timeout=180s
 
 status: ## Show workloads, ingress hostnames and certificate expiry
-	@echo "── workloads ─────────────────────────────────────────"
+	@echo "== workloads =="
 	@kubectl get pods -A --no-headers | awk '{printf "  %-16s %-46s %s\n", $$1, $$2, $$4}'
 	@echo
-	@echo "── ingress ───────────────────────────────────────────"
+	@echo "== ingress =="
 	@kubectl get ingress -A --no-headers 2>/dev/null | awk '{printf "  %-40s -> %s\n", $$4, $$1"/"$$2}' || echo "  none"
 	@echo
-	@echo "── certificates ──────────────────────────────────────"
+	@echo "== certificates =="
 	@for ns in cert-manager $(NAMESPACE); do \
 		kubectl -n $$ns get certificate --no-headers 2>/dev/null | awk -v n=$$ns '{printf "  %-14s %-22s ready=%s\n", n, $$1, $$2}'; \
 	done
@@ -100,7 +100,7 @@ wait-apps: ## Block until the demo workloads have ready endpoints
 smoke: ## Verify the demo endpoints answer over the internal CA (used by CI and locally)
 	@kubectl -n cert-manager get secret internal-root-ca-tls \
 		-o jsonpath='{.data.tls\.crt}' | base64 -d > internal-root-ca.pem
-	@echo "→ frontend  https://app.$(DOMAIN):8443/"
+	@echo "-> frontend  https://app.$(DOMAIN):8443/"
 	@for i in $$(seq 1 20); do \
 		curl -fsS --resolve app.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
 			https://app.$(DOMAIN):8443/ 2>/dev/null | grep -q "Platform demo" \
@@ -108,7 +108,7 @@ smoke: ## Verify the demo endpoints answer over the internal CA (used by CI and 
 		[ $$i = 20 ] && { echo "  FAIL, frontend did not serve in time"; rm -f internal-root-ca.pem; exit 1; }; \
 		sleep 3; \
 	done
-	@echo "→ api       https://api.$(DOMAIN):8443/"
+	@echo "-> api       https://api.$(DOMAIN):8443/"
 	@for i in $$(seq 1 20); do \
 		curl -fsS --resolve api.$(DOMAIN):8443:127.0.0.1 --cacert internal-root-ca.pem \
 			https://api.$(DOMAIN):8443/ 2>/dev/null | grep -q "internal certificate" \
@@ -117,6 +117,17 @@ smoke: ## Verify the demo endpoints answer over the internal CA (used by CI and 
 		sleep 3; \
 	done
 	@rm -f internal-root-ca.pem
+
+backup-test: ## Back up now, restore the dump into a scratch database, compare row counts
+	kubectl -n $(NAMESPACE) exec postgres-0 -- psql -U demo -d demo -c \
+		"create table if not exists backup_probe as select generate_series(1, 42) as id"
+	kubectl -n $(NAMESPACE) delete job backup-test postgres-restore-test --ignore-not-found
+	kubectl -n $(NAMESPACE) create job backup-test --from=cronjob/postgres-backup
+	kubectl -n $(NAMESPACE) wait --for=condition=complete job/backup-test --timeout=180s
+	kubectl apply -f tests/restore-test.yaml
+	@kubectl -n $(NAMESPACE) wait --for=condition=complete job/postgres-restore-test --timeout=180s \
+		|| { kubectl -n $(NAMESPACE) logs job/postgres-restore-test; exit 1; }
+	kubectl -n $(NAMESPACE) logs job/postgres-restore-test
 
 down: ## Destroy the cluster
 	k3d cluster delete $(CLUSTER)

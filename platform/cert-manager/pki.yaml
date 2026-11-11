@@ -15,8 +15,8 @@ spec:
 
 ---
 # The root CA. Long-lived on purpose: clients install it once, and every leaf
-# rotates underneath it without anyone touching a client again. The 398-day
-# browser limit applies to server certificates, not to CAs.
+# rotates underneath it without anyone touching a client again. Validity
+# limits on TLS certificates apply to server certificates, not to CAs.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

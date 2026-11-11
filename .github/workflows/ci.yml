@@ -1,7 +1,8 @@
 name: ci
 
 # validate: lint and schema-check the manifests, no cluster needed.
-# e2e: bring the whole platform up in k3d and check the demo is served over TLS by the internal CA.
+# e2e: bring the whole platform up in k3d, check the demo is served over TLS by the internal CA,
+# then run a backup and restore it into a scratch database.
 
 on:
   push:
@@ -21,7 +22,7 @@ jobs:
       - name: yamllint
         run: |
           pip install --quiet yamllint==1.35.1
-          yamllint apps cluster platform ansible .github
+          yamllint apps cluster platform tests ansible .github
 
       - name: kubeconform (validate manifests against Kubernetes schemas)
         run: |
@@ -33,7 +34,7 @@ jobs:
           # Traefik); core objects are still validated strictly.
           ./kubeconform -strict -summary -ignore-missing-schemas \
             -kubernetes-version 1.31.0 \
-            apps platform
+            apps platform tests
 
       - name: ansible-lint (provisioning playbook)
         run: |
@@ -67,6 +68,9 @@ jobs:
 
       - name: Smoke test the demo endpoints over the internal CA
         run: make smoke
+
+      - name: Back up the database and restore it into a scratch database
+        run: make backup-test
 
       - name: Diagnostics on failure
         if: failure()

@@ -13,10 +13,9 @@ kubectl -n apps get jobs -l job-name --sort-by=.metadata.creationTimestamp | tai
 kubectl -n apps logs job/<most-recent-job>
 ```
 
-A successful run ends with `backup complete: demo-<timestamp>.sql.gz`. The job verifies the
-gzip stream and rejects a dump under 1 KB before uploading, because a truncated dump, the
-usual result of a pod evicted mid-run, otherwise uploads happily and is discovered only
-during a restore.
+A successful run ends with `backup complete: demo-<timestamp>.sql.gz`. Before uploading, the job
+checks the gzip stream and that pg_dump wrote its end marker, because a truncated dump (for
+example from a pod evicted mid-run) would otherwise upload fine and show up only during a restore.
 
 ### List what is stored
 
@@ -31,10 +30,12 @@ Restoring over a live database is destructive. Take a fresh dump first if the cu
 has any value.
 
 ```console
-# 1. pick a backup
+# 1. pick a backup and copy it out of MinIO
 kubectl -n apps exec deploy/minio -- mc ls local/backups/postgres/
+kubectl -n apps exec deploy/minio -- mc cat local/backups/postgres/demo-20260908-020000.sql.gz \
+  > ./demo-20260908-020000.sql.gz
 
-# 2. pull it into the postgres pod
+# 2. put it into the postgres pod
 kubectl -n apps exec -i postgres-0 -- sh -c 'cat > /tmp/restore.sql.gz' \
   < ./demo-20260908-020000.sql.gz
 
@@ -51,12 +52,16 @@ kubectl -n apps scale deploy/demo-api --replicas=1
 
 ### Test the restore on a schedule
 
-A backup nobody has restored is a hypothesis. Quarterly, restore the most recent dump into
-a scratch database and check that the row counts are plausible:
+A backup that was never restored is untested. Now and then, restore the most recent dump
+into a scratch database and compare row counts with the live one. This is manual; there is
+no automated restore test yet.
 
 ```console
-kubectl -n apps exec postgres-0 -- psql -U demo -d demo -c \
+kubectl -n apps exec postgres-0 -- createdb -U demo scratch
+kubectl -n apps exec postgres-0 -- sh -c 'gunzip -c /tmp/restore.sql.gz | psql -U demo -d scratch'
+kubectl -n apps exec postgres-0 -- psql -U demo -d scratch -c \
   "select relname, n_live_tup from pg_stat_user_tables order by n_live_tup desc limit 10;"
+kubectl -n apps exec postgres-0 -- dropdb -U demo scratch
 ```
 
 ## Certificates
@@ -100,8 +105,10 @@ Work down this list; each step rules out one layer.
 1. **Does the name resolve?** `make hosts` prints the required `/etc/hosts` line.
 2. **Is the certificate trusted?** `make trust-ca` exports the root and prints the install
    command for each platform.
-3. **Is the certificate short enough?** Anything over 398 days is rejected by Apple
-   clients regardless of trust. Check with `openssl x509 -noout -dates`.
+3. **Is the certificate short enough?** Apple clients reject server certificates with a
+   very long validity even when the CA is trusted (see
+   [apple-tls-398](https://github.com/Walaskien/apple-tls-398)). Check with
+   `openssl x509 -noout -dates`.
 4. **Test with the right tool.** On macOS, `curl` validates against `/etc/ssl/cert.pem`,
    not the system keychain, so it fails even when trust is correctly installed. Use
    `nscurl <url>`, it uses the same evaluation as Safari.

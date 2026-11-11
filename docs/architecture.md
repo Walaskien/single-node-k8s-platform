@@ -42,9 +42,9 @@ flowchart TB
 
 ### One node, and where that hurts
 
-A single node means node loss is downtime. That is acceptable for an internal system with
-tens of users, where an hour of downtime is an inconvenience rather than lost revenue, and
-it is not acceptable for anything customer-facing.
+A single node means node loss is downtime. That can be acceptable for an internal system with
+few users, where an hour of downtime is an inconvenience, and it is not acceptable for
+anything customer-facing.
 
 What single-node genuinely costs:
 
@@ -61,23 +61,24 @@ administrator can hold in their head. At this scale that is usually the right tr
 
 ### Certificates live for a year, not a decade
 
-A private CA invites long-lived certificates, nobody is charging per issuance, so why not
-ten years? Because Apple's TLS stack rejects any server certificate valid beyond 398 days,
-and the resulting failure looks like a trust problem rather than a policy one. Chrome and
-Firefox exempt locally-installed roots, so the breakage appears only on Macs and iPhones,
-which makes it easy to misdiagnose for hours.
+A private CA invites long-lived certificates: nobody charges per issuance, so why not ten
+years? In an earlier setup, leaf certificates with a 10-year validity from a private CA were
+rejected by Apple clients even though the root was installed and trusted, while Windows
+browsers worked. Apple documents validity limits for TLS server certificates: 825 days
+since iOS 13 and macOS 10.15, and 398 days for certificates from publicly trusted CAs since
+September 2020 (Apple says user-added roots are not affected by the 398-day change). I did
+not isolate which limit triggered the failure, and I did not test this lab on a device.
+Leaves here are 365 days, under both.
 
-Leaves are issued for 365 days with renewal 60 days out. The root keeps its ten years,
-because the limit does not apply to CAs and because rotating a root means touching every
-client.
+Leaves are issued for 365 days with renewal 60 days out. The root keeps its ten years: the
+limits are about server certificates, and rotating a root means touching every client.
 
-Ninety days would follow the Let's Encrypt convention and is the better default when
-certificate expiry is monitored. A year is chosen here for the opposite reason: if
-cert-manager silently stops working, a year is enough time to notice, while ninety days
-takes the estate down within a quarter. Pick based on whether you have alerting, not on
-which number sounds more secure.
+cert-manager's own default is 90 days, which is the better choice when certificate expiry
+is monitored. A year is chosen here for the opposite case: if cert-manager silently stops
+working, a year is enough time to notice, while 90 days takes the estate down within a
+quarter. Pick based on whether you have alerting.
 
-Full write-up: [apple-tls-398](https://github.com/Walaskien/apple-tls-398).
+Write-up: [apple-tls-398](https://github.com/Walaskien/apple-tls-398).
 
 ### Two hostnames for one application
 
@@ -100,15 +101,14 @@ bearing infrastructure and which is one team's experiment.
 The split also makes the teardown test meaningful: if `make down && make up` reproduces the
 platform exactly, the cluster is genuinely disposable.
 
-### Secrets are committed here, and would not be in production
+### Secrets are committed here, and should not be outside the lab
 
-The Secret manifests contain literal passwords. That is defensible only because this
+The Secret manifests contain literal passwords. That is acceptable only because this
 cluster is disposable, listens on localhost, and holds nothing.
 
-For real use the same manifests would take values from an external secret store, Sealed
-Secrets or External Secrets Operator, so the repository holds references rather than
-credentials. Committing this decision explicitly is preferable to leaving a reader
-wondering whether the author knows the difference.
+For anything real the same manifests would take values from an external secret store,
+Sealed Secrets or External Secrets Operator, so the repository holds references rather
+than credentials.
 
 ## When this outgrows one node
 

@@ -10,8 +10,8 @@ works, the same SSH through a port forward from outside times out.** Nothing is 
 wrong, nothing is firewalled. The cause is that a host with two default gateways answers on
 the wrong one.
 
-The commands here are `netplan` and `systemd-networkd`, because the node was Ubuntu. On the
-RHEL-family node described in [`production-node.md`](production-node.md) the equivalents are
+The commands here are `netplan` and `systemd-networkd` (Ubuntu). On a
+RHEL-family node such as the one described in [`kubeadm-node.md`](kubeadm-node.md) the equivalents are
 NetworkManager keyfiles and `nmcli connection modify`; the routing problem and its fix are
 identical, only the syntax moves.
 

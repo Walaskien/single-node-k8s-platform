@@ -7,7 +7,7 @@ metadata:
 spec:
   secretName: app-tls
   dnsNames: [app.example.internal]
-  duration: 8760h # 365 days, under Apple's 398-day ceiling
+  duration: 8760h # 365 days, under Apple's validity limits (see apple-tls-398)
   renewBefore: 1440h
   issuerRef:
     name: internal-ca

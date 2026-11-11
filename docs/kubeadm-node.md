@@ -1,12 +1,12 @@
-# The production node
+# The kubeadm node
 
-This lab runs on k3d so it fits on a laptop. The deployment it models is upstream
-Kubernetes installed with `kubeadm` on a single machine. This document records what that
-node looks like, and exactly where the two differ.
+This lab runs on k3d so it fits on a laptop. The deployment it is modelled on is upstream
+Kubernetes installed with `kubeadm` on a single machine. This document describes that
+node and where it differs from the lab.
 
 ## What differs
 
-| | Lab (k3d) | Production node (kubeadm) |
+| | Lab (k3d) | kubeadm node |
 |---|---|---|
 | Cluster | k3s in Docker | Upstream Kubernetes, `kubeadm init` |
 | Host OS | container | Rocky Linux / RHEL family |
@@ -21,17 +21,17 @@ node looks like, and exactly where the two differ.
 Worth stating plainly, because the requirement to install Docker suggests otherwise: k3d
 means "k3s in Docker", and Docker's job there is to impersonate a *machine*. It runs one
 container that stands in for the node. Inside that container, k3s starts **containerd**, and
-pods run on containerd, the same runtime as production.
+pods run on containerd, the same runtime as on the kubeadm node.
 
 ```
-lab          Colima → Docker → node container → k3s → containerd → pods
-production                      Rocky Linux    → kubeadm → containerd → pods
+lab      Colima -> Docker -> node container -> k3s -> containerd -> pods
+kubeadm                        Rocky Linux    -> kubeadm -> containerd -> pods
 ```
 
 So Docker exists only at the outermost layer, only on a laptop, and nothing in the cluster
 talks to it. `kubectl get nodes -o wide` reports `containerd://…` under CONTAINER-RUNTIME in
 both environments. Anything that depended on the Docker socket would work in the lab and
-break on the real node; nothing here does.
+break on the kubeadm node; nothing here does.
 
 ### What is not portable
 
@@ -42,14 +42,14 @@ knowing about:
 - **Traefik `Middleware`** for CORS is Traefik-specific. On HAProxy the same thing is done
   with `ingress.kubernetes.io/cors-*` annotations on the Ingress itself.
 
-Both are one-line changes, and both are the kind of detail that turns a working manifest
-into a broken one when moved between clusters, which is the reason to write them down.
+Both are small changes, but easy to miss when moving manifests between clusters.
 
 ## Bringing up the node
 
-A condensed version of the procedure, for reference rather than for copy-paste, versions
-move and the upstream documentation is authoritative. The same steps, automated and
-idempotent, live in [`ansible/`](../ansible/), that is the version meant to be run.
+A condensed version of the procedure, for reference rather than for copy-paste: versions
+move and the upstream documentation is authoritative. The same steps as an Ansible
+playbook are in [`ansible/`](../ansible/); that playbook has not been run end to end yet
+(see its README).
 
 ```bash
 # Kubernetes needs swap off and bridged traffic visible to iptables
