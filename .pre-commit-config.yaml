@@ -15,3 +15,13 @@ repos:
         # ansible-lint 6.22.2 imports and the hook crashes on import
         additional_dependencies:
           - ansible-core==2.15.13
+
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint
+        # docker so nothing extra to install; same image and version as CI
+        entry: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+        language: system
+        files: ^\.github/workflows/
+        pass_filenames: false
